@@ -41,6 +41,10 @@ delete process.env.QODER_SESSION_ID;
 // hook would otherwise steer every case into the Cursor JSON branch (#817).
 delete process.env.CURSOR_VERSION;
 delete process.env.CURSOR_PROJECT_DIR;
+// Same hygiene for ZCode: its plugin hook env sets the ZCODE_* overlay, which
+// would steer every case into the ZCode JSON branch.
+delete process.env.ZCODE_PLUGIN_ROOT;
+delete process.env.ZCODE_PLUGIN_DATA;
 
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'ponytail-hooks-'));
 // Runs on normal exit and on assertion-throw exit; force makes it idempotent.
@@ -426,6 +430,75 @@ assert.match(
   output.hookSpecificOutput.additionalContext,
   /PONYTAIL MODE ACTIVE — level: full/,
 );
+// ZCode: Claude-format plugin hooks with a ZCODE_* env overlay. The mode flag
+// lives in ZCODE_PLUGIN_DATA (the per-plugin data dir ZCode hands every hook),
+// and output is hookSpecificOutput JSON — ZCode's HookJSONOutput accepts that
+// shape directly. ZCode has a SessionStart event, so unlike Qoder the tracker
+// does not re-inject the ruleset on every prompt.
+const zcodeHome = path.join(temp, 'zcode-home');
+const zcodeData = path.join(temp, 'zcode-plugin-data');
+const zcodeState = path.join(zcodeData, '.ponytail-active');
+fs.mkdirSync(zcodeHome, { recursive: true });
+
+const zcodeEnv = {
+  HOME: zcodeHome,
+  USERPROFILE: zcodeHome,
+  ZCODE_PLUGIN_ROOT: path.join(temp, 'zcode-root'),
+  ZCODE_PLUGIN_DATA: zcodeData,
+  PONYTAIL_DEFAULT_MODE: 'full',
+};
+
+// SessionStart activation: flag in ZCODE_PLUGIN_DATA, ruleset via
+// hookSpecificOutput JSON, and no Claude-only statusline nudge.
+result = run('ponytail-activate.js', zcodeEnv);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(fs.readFileSync(zcodeState, 'utf8'), 'full');
+assert.ok(
+  !result.stdout.includes('STATUSLINE SETUP NEEDED'),
+  'ZCode must not get the Claude-only statusline nudge',
+);
+output = JSON.parse(result.stdout);
+assert.equal(output.hookSpecificOutput.hookEventName, 'SessionStart');
+assert.match(
+  output.hookSpecificOutput.additionalContext,
+  /PONYTAIL MODE ACTIVE — level: full/,
+);
+
+// /ponytail lite: header confirmation only, like native Claude.
+result = run(
+  'ponytail-mode-tracker.js',
+  zcodeEnv,
+  JSON.stringify({ prompt: '/ponytail lite' }),
+);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(fs.readFileSync(zcodeState, 'utf8'), 'lite');
+output = JSON.parse(result.stdout);
+assert.equal(output.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
+assert.equal(
+  output.hookSpecificOutput.additionalContext,
+  'PONYTAIL MODE CHANGED — level: lite',
+);
+
+// Ordinary prompt: silent — the SessionStart context already carries the ruleset.
+result = run(
+  'ponytail-mode-tracker.js',
+  zcodeEnv,
+  JSON.stringify({ prompt: 'write a function' }),
+);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(result.stdout, '', 'ZCode tracker must stay silent on ordinary prompts');
+
+// "stop ponytail": deactivates, clears flag, confirms via JSON.
+result = run(
+  'ponytail-mode-tracker.js',
+  zcodeEnv,
+  JSON.stringify({ prompt: 'stop ponytail' }),
+);
+assert.equal(result.status, 0, result.stderr);
+assert.equal(fs.existsSync(zcodeState), false, 'flag must be cleared after stop ponytail');
+output = JSON.parse(result.stdout);
+assert.equal(output.hookSpecificOutput.additionalContext, 'PONYTAIL MODE OFF');
+
 // writeDefaultMode must merge into existing config, not overwrite it (#490).
 const mergeHome = path.join(temp, 'merge-home');
 const mergeConfigDir = path.join(mergeHome, '.config', 'ponytail');

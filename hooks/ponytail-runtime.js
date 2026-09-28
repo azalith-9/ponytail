@@ -27,6 +27,12 @@ const isQoder = !isCopilot && !isCodex && Boolean(process.env.QODER_SESSION_ID);
 // hooks next to CLAUDE_PLUGIN_ROOT, and it needs Cursor-shaped JSON either
 // way, so this check comes after the hosts with their own data dirs.
 const isCursor = !isCopilot && !isCodex && !isQoder && Boolean(process.env.CURSOR_VERSION);
+// ZCode runs Claude-format plugin hooks with CLAUDE_PLUGIN_ROOT *and* a
+// ZCODE_* overlay; ZCODE_PLUGIN_ROOT is set only in ZCode's plugin hook env
+// (createPluginEnvOverlay), so it separates ZCode from native Claude Code,
+// which never sets it.
+const isZcode = !isCopilot && !isCodex && !isQoder && !isCursor &&
+  Boolean(process.env.ZCODE_PLUGIN_ROOT);
 
 let stateDir = getClaudeDir();
 if (isCodex) stateDir = process.env.PLUGIN_DATA;
@@ -35,6 +41,9 @@ if (isCodex) stateDir = process.env.PLUGIN_DATA;
 if (isCopilot) stateDir = process.env.COPILOT_PLUGIN_DATA || getClaudeDir();
 if (isQoder) stateDir = path.join(os.homedir(), '.qoder');
 if (isCursor) stateDir = path.join(os.homedir(), '.cursor');
+// ZCode hands every plugin hook a per-plugin data dir (ZCODE_PLUGIN_DATA);
+// it dies with the plugin on uninstall, which is exactly the flag's lifetime.
+if (isZcode) stateDir = process.env.ZCODE_PLUGIN_DATA || path.join(os.homedir(), '.zcode', 'ponytail');
 
 const statePath = path.join(stateDir, STATE_FILE);
 
@@ -95,9 +104,10 @@ function writeHookOutput(event, mode, context = '') {
     process.stdout.write(JSON.stringify(output));
     return;
   }
-  if (isQoder) {
-    // Qoder: hookSpecificOutput JSON, same shape as Codex minus systemMessage.
-    // UserPromptSubmit additionalContext is injected into the Agent's conversation.
+  if (isQoder || isZcode) {
+    // Qoder/ZCode: hookSpecificOutput JSON, same shape as Codex minus
+    // systemMessage. UserPromptSubmit additionalContext is injected into the
+    // Agent's conversation (ZCode's HookJSONOutput accepts this shape as-is).
     const output = {};
     if (context) {
       output.hookSpecificOutput = {
@@ -138,6 +148,7 @@ module.exports = {
   isCopilot,
   isCursor,
   isQoder,
+  isZcode,
   readMode,
   setMode,
   writeHookOutput,

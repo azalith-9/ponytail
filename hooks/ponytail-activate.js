@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ponytail — Claude Code SessionStart activation hook (also Codex, Copilot,
-// Grok and Cursor sessionStart)
+// Grok, Cursor sessionStart and ZCode SessionStart)
 //
 // Runs on every session start:
 //   1. Writes flag file at $CLAUDE_CONFIG_DIR/.ponytail-active (defaults to ~/.claude; statusline reads this)
@@ -18,6 +18,7 @@ const {
   isCodex,
   isCopilot,
   isCursor,
+  isZcode,
   setMode,
   writeHookOutput,
 } = require('./ponytail-runtime');
@@ -30,7 +31,7 @@ const mode = getDefaultMode();
 // "off" mode — skip activation entirely, don't write flag or emit rules
 if (mode === 'off') {
   clearMode();
-  const hookOutput = (isCodex || isCopilot || isCursor) ? '' : 'OK';
+  const hookOutput = (isCodex || isCopilot || isCursor || isZcode) ? '' : 'OK';
   writeHookOutput('SessionStart', 'off', hookOutput);
   process.exit(0);
 }
@@ -61,7 +62,8 @@ try {
 let output = getPonytailInstructions(mode);
 
 // 3. Detect missing statusline config — nudge Claude to help set it up
-if (!isCodex && !isCopilot && !isCursor) try {
+// (Claude-only: ZCode, like Codex/Copilot/Cursor, has no statusLine setting)
+if (!isCodex && !isCopilot && !isCursor && !isZcode) try {
   let hasStatusline = false;
   if (fs.existsSync(settingsPath)) {
     // Strip UTF-8 BOM some editors prepend on Windows (breaks JSON.parse)

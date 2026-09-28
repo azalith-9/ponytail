@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Version-consistency guard. Ponytail declares its version in seven files across
-// five host ecosystems, and every release bumps all of them by hand.
+// Version-consistency guard. Ponytail declares its version in the manifests of
+// every host ecosystem at once, and every release bumps all of them by hand.
 //
 // tests/gemini-extension.test.js already checks the four plugin manifests agree
 // with each other, but that can't catch the failure mode that shipped in v4.8.0:
@@ -24,6 +24,7 @@ const VERSION_FILES = [
   '.devin-plugin/plugin.json',   // Devin CLI plugin
   '.github/plugin/plugin.json',  // Copilot plugin
   '.qoder-plugin/plugin.json',   // Qoder plugin
+  '.zcode-plugin/plugin.json',   // ZCode plugin
   'gemini-extension.json',       // Gemini CLI extension
   'package.json',                // pi-package / repo root
   'ponytail-mcp/package.json',   // MCP server (private, internal-only)
